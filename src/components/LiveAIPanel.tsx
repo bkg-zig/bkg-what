@@ -141,11 +141,25 @@ export function LiveAIPanel({
       } 
     });
 
+    let targetSenderType: 'assistant' | 'external' = 'assistant';
+    let targetSenderName = 'BKG AI';
+    
+    // Check for explicit mentions
+    const externalParticipants = liveAIState.externalParticipants || [];
+    for (const p of externalParticipants) {
+      if (userMessage.content.toLowerCase().includes(`@${p.name.toLowerCase()}`)) {
+        targetSenderType = 'external';
+        targetSenderName = p.name;
+        break;
+      }
+    }
+
     const assistantMsgId = (Date.now() + 1).toString();
     const placeholderMsg: LiveChatMessage = {
       id: assistantMsgId,
       sessionId: session.id,
-      senderType: 'assistant',
+      senderType: targetSenderType,
+      senderName: targetSenderName,
       content: '',
       createdAt: new Date().toISOString()
     };
@@ -162,7 +176,7 @@ export function LiveAIPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           history: historyText,
-          userMessage: userMessage.content,
+          userMessage: targetSenderType === 'external' ? `[PROMPT AS: ${targetSenderName}] ` + userMessage.content : userMessage.content,
           sessionContext,
           language,
           useGoogleSearch
@@ -220,6 +234,77 @@ export function LiveAIPanel({
 
   const [inviteMode, setInviteMode] = useState<'passive'|'attentive'|'active'>('attentive');
   const [inviteTts, setInviteTts] = useState(true);
+  const [showExternalInvite, setShowExternalInvite] = useState(false);
+  const [availableProviders, setAvailableProviders] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (showExternalInvite && availableProviders.length === 0) {
+      fetch('/api/providers')
+        .then(res => res.json())
+        .then(data => setAvailableProviders(data.filter((p: any) => p.enabled && !p.isPrimary)))
+        .catch(console.error);
+    }
+  }, [showExternalInvite]);
+
+  const handleAddExternal = async (providerName: string) => {
+    setShowExternalInvite(false);
+    const newParticipant: ExternalAIParticipant = {
+      id: Date.now().toString(),
+      provider: providerName as any,
+      name: providerName,
+      status: 'connecting',
+      joinedAt: new Date().toISOString()
+    };
+    
+    updateSession({
+      liveAIState: {
+        ...liveAIState,
+        externalParticipants: [...(liveAIState.externalParticipants || []), newParticipant]
+      }
+    });
+
+    // Simulate connection delay
+    setTimeout(() => {
+      updateSession({
+        liveAIState: {
+          ...liveAIState,
+          externalParticipants: [...(liveAIState.externalParticipants || [])].map(p => 
+            p.id === newParticipant.id ? { ...p, status: 'context_sync' } : p
+          )
+        }
+      });
+      
+      setTimeout(() => {
+        updateSession({
+          liveAIState: {
+            ...liveAIState,
+            externalParticipants: [...(liveAIState.externalParticipants || [])].map(p => 
+              p.id === newParticipant.id ? { ...p, status: 'connected' } : p
+            )
+          },
+          liveChat: [
+            ...(session.liveChat || []),
+            {
+              id: Date.now().toString(),
+              sessionId: session.id,
+              senderType: 'system',
+              content: `${provider} wurde zur Session hinzugefügt.\nRolle: Unabhängiger Reviewer`,
+              createdAt: new Date().toISOString()
+            }
+          ]
+        });
+      }, 1500);
+    }, 1000);
+  };
+
+  const handleRemoveExternal = (id: string) => {
+    updateSession({
+      liveAIState: {
+        ...liveAIState,
+        externalParticipants: (liveAIState.externalParticipants || []).filter(p => p.id !== id)
+      }
+    });
+  };
 
   if (!liveAIState.invited) {
     return (
@@ -324,17 +409,48 @@ export function LiveAIPanel({
             <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--status-success)] rounded-full animate-pulse shadow-[0_0_8px_var(--status-success)]" />
           </div>
           <div className="flex flex-col">
-            <h2 className="text-[10px] font-mono tracking-widest text-[var(--text-primary)] uppercase">LIVE AI ASSISTANT</h2>
-            <span className="text-[8px] font-mono tracking-widest text-[var(--accent-cyan)] uppercase">● EINGELADEN • ONLINE</span>
+            <h2 className="text-[10px] font-mono tracking-widest text-[var(--text-primary)] uppercase">LIVE RESEARCH ROOM</h2>
+            <div className="flex items-center gap-2 text-[8px] font-mono tracking-widest uppercase mt-0.5">
+              <span className="text-[var(--accent-cyan)]">● BKG AI</span>
+              {liveAIState.externalParticipants?.map(p => (
+                <span key={p.id} className="text-[var(--status-warning)] flex items-center gap-1 group relative">
+                  <span className={classNames(
+                    "w-1 h-1 rounded-full",
+                    p.status === 'connected' ? 'bg-[var(--status-success)]' : 'bg-[var(--status-warning)] animate-pulse'
+                  )} />
+                  {p.name}
+                  <button onClick={() => handleRemoveExternal(p.id)} className="hidden group-hover:inline ml-1 text-[var(--status-danger)] hover:text-red-400">
+                    <X className="w-2 h-2" />
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 relative">
           <button 
-            onClick={handleLeave}
-            className="text-[10px] font-mono tracking-widest text-[var(--text-muted)] hover:text-[var(--status-danger)] transition-colors uppercase"
+            onClick={() => setShowExternalInvite(!showExternalInvite)}
+            className="text-[10px] font-mono tracking-widest text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)]/10 px-2 py-1 rounded transition-colors uppercase border border-[var(--accent-cyan)]/30"
           >
-            [ KI VERLASSEN LASSEN ]
+            + EXTERNE KI
           </button>
+          {showExternalInvite && (
+            <div className="absolute top-full right-16 mt-2 w-48 bg-[var(--bg-panel-high)] border border-[var(--border)] shadow-xl rounded-sm py-1 z-50">
+              {availableProviders.length === 0 ? (
+                <div className="px-4 py-2 text-xs font-mono tracking-widest uppercase text-[var(--text-muted)] text-center">Loading...</div>
+              ) : (
+                availableProviders.map(provider => (
+                  <button
+                    key={provider.id}
+                    onClick={() => handleAddExternal(provider.name)}
+                    className="w-full text-left px-4 py-2 text-[10px] font-mono tracking-widest uppercase text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)]"
+                  >
+                    {provider.name}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
           <button 
             onClick={onClose}
             className="text-[10px] font-mono tracking-widest text-[var(--text-muted)] hover:text-[var(--accent-cyan)] transition-colors uppercase"
@@ -383,42 +499,53 @@ export function LiveAIPanel({
               animate={{ opacity: 1, y: 0 }}
               key={msg.id} 
               className={classNames(
-                "flex flex-col max-w-[85%]",
-                msg.senderType === 'user' ? "ml-auto items-end" : "mr-auto items-start"
+                "flex flex-col w-full",
+                msg.senderType === 'user' ? "items-end" : msg.senderType === 'system' ? "items-center" : "items-start"
               )}
             >
-              <div className={classNames(
-                "text-[9px] font-mono tracking-widest uppercase mb-1 flex items-center gap-2",
-                msg.senderType === 'user' ? "text-[var(--accent-cyan)]" : "text-[var(--accent-violet)]"
-              )}>
-                {msg.senderType === 'user' ? 'USER' : 'BKG AI'}
-                {msg.senderType === 'assistant' && !isStreaming && (
-                  <button
-                    onClick={() => handlePlayAudio(msg)}
-                    className="hover:text-[var(--accent-cyan)] transition-colors ml-2 flex items-center gap-1"
-                    title={playingMsgId === msg.id ? "Pause Audio" : "Play Audio"}
-                  >
-                    {playingMsgId === msg.id ? (
-                      <Square className="w-3 h-3 fill-current" />
-                    ) : msg.ttsStatus === 'generating' ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Play className="w-3 h-3" />
+              {msg.senderType === 'system' ? (
+                <div className="text-[10px] font-mono tracking-widest text-[var(--text-muted)] uppercase my-2 whitespace-pre-line text-center opacity-70">
+                  {msg.content}
+                </div>
+              ) : (
+                <div className={classNames("flex flex-col max-w-[85%]", msg.senderType === 'user' ? "items-end" : "items-start")}>
+                  <div className={classNames(
+                    "text-[9px] font-mono tracking-widest uppercase mb-1 flex items-center gap-2",
+                    msg.senderType === 'user' ? "text-[var(--accent-cyan)]" : 
+                    msg.senderType === 'external' ? "text-[var(--status-warning)]" : "text-[var(--accent-violet)]"
+                  )}>
+                    {msg.senderType === 'user' ? 'USER' : msg.senderType === 'external' ? `${msg.senderName} [EXTERN]` : 'BKG AI [INTERN]'}
+                    {(msg.senderType === 'assistant' || msg.senderType === 'external') && (!isStreaming || msg.id !== liveChat[liveChat.length - 1].id) && (
+                      <button
+                        onClick={() => handlePlayAudio(msg)}
+                        className="hover:text-[var(--accent-cyan)] transition-colors ml-2 flex items-center gap-1"
+                        title={playingMsgId === msg.id ? "Pause Audio" : "Play Audio"}
+                      >
+                        {playingMsgId === msg.id ? (
+                          <Square className="w-3 h-3 fill-current" />
+                        ) : msg.ttsStatus === 'generating' ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Play className="w-3 h-3" />
+                        )}
+                      </button>
                     )}
-                  </button>
-                )}
-              </div>
-              <div className={classNames(
-                "p-3 rounded-sm text-sm border font-sans",
-                msg.senderType === 'user' 
-                  ? "bg-[var(--accent-cyan)]/5 border-[var(--accent-cyan)]/20 text-[var(--text-primary)] rounded-tr-none" 
-                  : "bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)] rounded-tl-none"
-              )}>
-                {msg.content}
-                {isStreaming && msg.id === liveChat[liveChat.length - 1].id && msg.senderType === 'assistant' && (
-                  <span className="inline-block w-1.5 h-3 ml-1 bg-[var(--accent-violet)] animate-pulse align-middle" />
-                )}
-              </div>
+                  </div>
+                  <div className={classNames(
+                    "p-3 rounded-sm text-sm border font-sans",
+                    msg.senderType === 'user' 
+                      ? "bg-[var(--accent-cyan)]/5 border-[var(--accent-cyan)]/20 text-[var(--text-primary)] rounded-tr-none" 
+                      : msg.senderType === 'external'
+                      ? "bg-[var(--bg-panel-high)] border-[var(--status-warning)]/30 text-[var(--text-primary)] rounded-tl-none"
+                      : "bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)] rounded-tl-none"
+                  )}>
+                    {msg.content}
+                    {isStreaming && msg.id === liveChat[liveChat.length - 1].id && msg.senderType !== 'user' && (
+                      <span className={classNames("inline-block w-1.5 h-3 ml-1 animate-pulse align-middle", msg.senderType === 'external' ? "bg-[var(--status-warning)]" : "bg-[var(--accent-violet)]")} />
+                    )}
+                  </div>
+                </div>
+              )}
             </motion.div>
           ))
         )}

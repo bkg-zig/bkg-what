@@ -16,11 +16,20 @@ export interface SourceReference {
   paragraphIndex?: number;
 }
 
+export interface ExternalAIParticipant {
+  id: string;
+  provider: 'ChatGPT' | 'Claude' | 'OpenCode' | 'Codex' | 'Gemini' | 'Custom';
+  name: string;
+  status: 'connecting' | 'context_sync' | 'connected' | 'error';
+  joinedAt: string;
+}
+
 export interface LiveChatMessage {
   id: string;
   sessionId: string;
-  senderType: 'user' | 'assistant' | 'agent' | 'system';
+  senderType: 'user' | 'assistant' | 'agent' | 'system' | 'external';
   senderId?: string;
+  senderName?: string;
   content: string;
   sourceIds?: string[];
   claimIds?: string[];
@@ -38,6 +47,7 @@ export interface LiveAIState {
   ttsEnabled: boolean;
   groundingEnabled: boolean;
   pendingQuestionId?: string;
+  externalParticipants?: ExternalAIParticipant[];
 }
 
 export interface Session {

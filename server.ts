@@ -3,6 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
+import { aiGateway } from './server/gateway';
 
 dotenv.config();
 
@@ -20,13 +21,61 @@ const ai = new GoogleGenAI({
   }
 });
 
+app.get('/api/providers', (req, res) => {
+  res.json(aiGateway.getProviders());
+});
+
+app.post('/api/providers', (req, res) => {
+  const { apiKey, ...config } = req.body;
+  const newConfig = {
+    ...config,
+    id: config.id || `provider-${Date.now()}`,
+    createdAt: config.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  aiGateway.addProviderConfig(newConfig, apiKey);
+  res.json(newConfig);
+});
+
 async function generateContentWithRetry(params: any, retries = 5) {
+  // Convert Gemini params to unified request format
+  const systemPrompt = params.config?.systemInstruction;
+  
+  // Safely extract string content whether it is a string or an array of parts
+  let contentString = '';
+  if (typeof params.contents === 'string') {
+    contentString = params.contents;
+  } else if (Array.isArray(params.contents)) {
+    contentString = params.contents.map((c: any) => c.parts?.map((p: any) => p.text).join('\n') || '').join('\n');
+  } else if (params.contents?.parts) {
+    contentString = params.contents.parts.map((p: any) => p.text).join('\n');
+  }
+
+  const messages = [{ role: 'user' as const, content: contentString }];
+  
+  const useGoogleSearch = !!params.tools?.find((t: any) => t.googleSearch);
+  const responseSchema = params.config?.responseSchema;
+  
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      return await ai.models.generateContent(params);
+      const response = await aiGateway.generate({
+        systemPrompt,
+        messages,
+        useGoogleSearch,
+        responseSchema,
+        responseModalities: params.config?.responseModalities,
+        speechConfig: params.config?.speechConfig,
+        metadata: { overrideModel: params.model },
+        temperature: params.config?.temperature,
+      });
+      return { 
+        text: response.content, 
+        audioBase64: response.audioBase64,
+        trace: { provider: response.providerId, model: response.model, fallback: response.fallbackUsed } 
+      };
     } catch (error: any) {
       const errorStr = String(error);
-      const isOverloaded = error?.status === 503 || errorStr.includes('503') || errorStr.includes('UNAVAILABLE');
+      const isOverloaded = error?.status === 503 || errorStr.includes('503') || errorStr.includes('UNAVAILABLE') || errorStr.includes('RATE_LIMIT');
       if (isOverloaded && attempt < retries) {
         await new Promise(resolve => setTimeout(resolve, attempt * 3000));
         continue;
@@ -35,6 +84,34 @@ async function generateContentWithRetry(params: any, retries = 5) {
     }
   }
   throw new Error("Failed after max retries");
+}
+
+function parseJSON(text: string) {
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.replace(/^```json\n?/, '');
+    cleaned = cleaned.replace(/\n?```$/, '');
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```\n?/, '');
+    cleaned = cleaned.replace(/\n?```$/, '');
+  }
+  
+  // Extract JSON block if surrounded by conversational text
+  if (!cleaned.startsWith('{') && !cleaned.startsWith('[')) {
+    const startObj = cleaned.indexOf('{');
+    const startArr = cleaned.indexOf('[');
+    if (startObj !== -1 || startArr !== -1) {
+       const start = startObj !== -1 && startArr !== -1 ? Math.min(startObj, startArr) : Math.max(startObj, startArr);
+       const endObj = cleaned.lastIndexOf('}');
+       const endArr = cleaned.lastIndexOf(']');
+       const end = Math.max(endObj, endArr);
+       if (end !== -1 && end > start) {
+          cleaned = cleaned.substring(start, end + 1);
+       }
+    }
+  }
+  
+  return JSON.parse(cleaned);
 }
 
 app.post('/api/analyze', async (req, res) => {
@@ -116,8 +193,8 @@ Alex: [Dialog]
       }
     });
 
-    const data = JSON.parse(response.text!);
-    res.json(data);
+    const data = parseJSON(response.text!);
+    res.json({ ...data, trace: response.trace });
   } catch (error: any) {
     console.error('Analyze error:', error);
     res.status(500).json({ error: error.message });
@@ -199,8 +276,8 @@ Sarah: [Dialog]
       }
     });
 
-    const data = JSON.parse(response.text!);
-    res.json(data);
+    const data = parseJSON(response.text!);
+    res.json({ ...data, trace: response.trace });
   } catch (error: any) {
     console.error('Discuss error:', error);
     res.status(500).json({ error: error.message });
@@ -211,9 +288,7 @@ app.post('/api/live-chat-stream', async (req, res) => {
   try {
     const { history, userMessage, sessionContext, language = 'Deutsch', useGoogleSearch } = req.body;
     
-    const tools = useGoogleSearch ? [{ googleSearch: {} }] : undefined;
-
-    const systemPrompt = `Du bist der "BKG AI Assistant", ein interaktiver Live-KI-Teilnehmer, der den Benutzer WÄHREND einer laufenden Experten-Analyse unterstützt.
+    let systemPrompt = `Du bist der "BKG AI Assistant", ein interaktiver Live-KI-Teilnehmer, der den Benutzer WÄHREND einer laufenden Experten-Analyse unterstützt.
 Dein Charakter: Objektiv, analytisch, hilfsbereit. Du hältst dich an Fakten und nutzt den Kontext der laufenden Session.
 
 KONTEXT DER LAUFENDEN SESSION:
@@ -229,14 +304,29 @@ DEINE AUFGABEN:
 
 VORHERIGER CHAT-VERLAUF:
 ${history}
-
-Eingabe des Benutzers: ${userMessage}
 `;
 
-    const responseStream = await ai.models.generateContentStream({
-      model: 'gemini-3.6-flash',
-      tools,
-      contents: systemPrompt,
+    let targetProviderId;
+    let internalMessage = userMessage;
+
+    if (userMessage.startsWith('[PROMPT AS:')) {
+      const match = userMessage.match(/\[PROMPT AS: (.*?)\](.*)/s);
+      if (match) {
+         const requestedName = match[1];
+         internalMessage = match[2].trim();
+         const providers = aiGateway.getProviders();
+         const provider = providers.find(p => p.name.toLowerCase() === requestedName.toLowerCase() || p.type.toLowerCase().includes(requestedName.toLowerCase()));
+         if (provider) {
+           targetProviderId = provider.id;
+         }
+      }
+    }
+
+    const stream = await aiGateway.stream({
+      systemPrompt,
+      messages: [{ role: 'user', content: internalMessage }],
+      useGoogleSearch,
+      targetProviderId
     });
 
     res.writeHead(200, {
@@ -245,7 +335,7 @@ Eingabe des Benutzers: ${userMessage}
       'Connection': 'keep-alive',
     });
 
-    for await (const chunk of responseStream) {
+    for await (const chunk of stream) {
       if (chunk.text) {
         res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
       }
@@ -303,7 +393,7 @@ app.post('/api/tts', async (req, res) => {
       }
     });
     
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const base64Audio = response.audioBase64;
     if (base64Audio) {
       res.json({ audio: base64Audio });
     } else {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Upload, FileText, Send, Mic, Play, Square, Loader2, File, ChevronRight, AlertCircle, CheckCircle2, Database, BookOpen, Download, Settings, Menu, Plus, Trash2, X, BrainCircuit, Globe, Users, Search, Bot } from 'lucide-react';
+import { Upload, FileText, Send, Mic, Play, Square, Loader2, File, ChevronRight, AlertCircle, CheckCircle2, Database, BookOpen, Download, Settings, Menu, Plus, Trash2, X, BrainCircuit, Globe, Users, Search, Bot, Server } from 'lucide-react';
 import { Message, AnalysisResponse, DiscussResponse, VoicePersona, Session, ExpertPair, Language } from './types';
 import { playPCMBase64, classNames } from './utils';
 import { knowledgeBase } from './data/knowledge';
@@ -8,6 +8,7 @@ import { KnowledgeBasePanel } from './components/KnowledgeBase';
 import { TermHeatmap } from './components/TermHeatmap';
 import { AgentsPanel, CustomAgent } from './components/AgentsPanel';
 import { LiveAIPanel } from './components/LiveAIPanel';
+import { ProviderDashboard } from './components/ProviderDashboard';
 import { getT } from './i18n';
 
 const loadState = <T,>(key: string, defaultValue: T): T => {
@@ -131,6 +132,7 @@ export function AppContent() {
   const [isKbOpen, setIsKbOpen] = useState(false);
   const [isAgentsOpen, setIsAgentsOpen] = useState(false);
   const [isLiveAIOpen, setIsLiveAIOpen] = useState(false);
+  const [isProviderDashboardOpen, setIsProviderDashboardOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -633,6 +635,13 @@ export function AppContent() {
           >
             <BrainCircuit className="w-3.5 h-3.5" />
             <span className="hidden xl:inline">{expertPair.length > 15 ? expertPair.substring(0, 15) + '...' : expertPair}</span>
+          </button>
+          <button
+            onClick={() => setIsProviderDashboardOpen(true)}
+            className="flex items-center gap-2 hover:text-[var(--text-primary)] transition-colors px-2 py-1"
+            title="AI Infrastructure"
+          >
+            <Server className="w-3.5 h-3.5" />
           </button>
           <div className="hidden lg:flex items-center gap-2">
             <Settings className="w-3.5 h-3.5 text-[var(--text-muted)]" />
@@ -1153,6 +1162,11 @@ export function AppContent() {
               />
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {isProviderDashboardOpen && (
+          <ProviderDashboard onClose={() => setIsProviderDashboardOpen(false)} />
         )}
       </AnimatePresence>
     </div>
