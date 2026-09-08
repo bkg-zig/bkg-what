@@ -132,8 +132,10 @@ export function AppContent() {
   const [isKbOpen, setIsKbOpen] = useState(false);
   const [isAgentsOpen, setIsAgentsOpen] = useState(false);
   const [isLiveAIOpen, setIsLiveAIOpen] = useState(false);
+  const [showExternalInviteTab, setShowExternalInviteTab] = useState(false);
   const [isProviderDashboardOpen, setIsProviderDashboardOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const activeSession = sessions.find(s => s.id === currentSessionId);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -657,7 +659,23 @@ export function AppContent() {
           </div>
           {messages.length > 0 && (
             <button
-              onClick={() => setIsLiveAIOpen(true)}
+              onClick={() => {
+                setShowExternalInviteTab(true);
+                setIsLiveAIOpen(true);
+              }}
+              className="flex items-center gap-2 hover:text-[var(--accent-cyan)] text-[var(--accent-cyan)] transition-colors px-2 py-1 border border-transparent hover:border-[var(--accent-cyan)]/30 rounded-sm"
+              title="Invite External AI"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span className="hidden xl:inline">+ EXTERNE KI</span>
+            </button>
+          )}
+          {messages.length > 0 && (
+            <button
+              onClick={() => {
+                setShowExternalInviteTab(false);
+                setIsLiveAIOpen(true);
+              }}
               className="flex items-center gap-2 hover:text-[var(--accent-violet)] text-[var(--accent-violet)] transition-colors px-2 py-1 border border-transparent hover:border-[var(--accent-violet)]/30 rounded-sm"
               title="Live AI Assistant"
             >
@@ -1151,7 +1169,10 @@ export function AppContent() {
               className="fixed inset-y-0 right-0 z-50 flex"
             >
               <LiveAIPanel 
-                onClose={() => setIsLiveAIOpen(false)}
+                onClose={() => {
+                  setIsLiveAIOpen(false);
+                  setShowExternalInviteTab(false);
+                }}
                 session={activeSession!}
                 updateSession={(update) => {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, ...update } : s));
@@ -1159,6 +1180,7 @@ export function AppContent() {
                 }}
                 language={language}
                 useGoogleSearch={useGoogleSearch}
+                defaultShowExternalInvite={showExternalInviteTab}
               />
             </motion.div>
           </>

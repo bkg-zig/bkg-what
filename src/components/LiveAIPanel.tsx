@@ -10,13 +10,15 @@ export function LiveAIPanel({
   session,
   updateSession,
   language,
-  useGoogleSearch
+  useGoogleSearch,
+  defaultShowExternalInvite = false
 }: { 
   onClose: () => void,
   session: Session,
   updateSession: (update: Partial<Session>) => void,
   language: Language,
-  useGoogleSearch: boolean
+  useGoogleSearch: boolean,
+  defaultShowExternalInvite?: boolean
 }) {
   const t = getT(language);
   const [input, setInput] = useState('');
@@ -32,6 +34,10 @@ export function LiveAIPanel({
     ttsEnabled: true,
     groundingEnabled: useGoogleSearch,
   };
+
+  const [inviteMode, setInviteMode] = useState<'passive'|'attentive'|'active'>('attentive');
+  const [inviteTts, setInviteTts] = useState(true);
+  const [showExternalInvite, setShowExternalInvite] = useState(defaultShowExternalInvite);
 
   const handleInvite = (mode: 'passive' | 'attentive' | 'active', tts: boolean, grounding: boolean) => {
     updateSession({
@@ -168,8 +174,27 @@ export function LiveAIPanel({
     try {
       updateSession({ liveAIState: { ...liveAIState, thinking: 'verifying' } });
       const historyText = newChat.map(m => `${m.senderType.toUpperCase()}: ${m.content}`).join('\n');
-      const sessionContext = `Analyzed Text: ${session.inputText.substring(0, 1000)}\n\nLast Discussion Output: ${session.messages[session.messages.length - 1]?.content || 'None'}`;
       
+      let sessionContext = `--- CONTEXT SNAPSHOT ---\n`;
+      sessionContext += `Input Text (first 2000 chars): ${session.inputText.substring(0, 2000)}\n\n`;
+      if (session.messages && session.messages.length > 0) {
+        sessionContext += `--- DISCUSSION SEGMENTS & CLAIMS ---\n`;
+        session.messages.forEach((m, i) => {
+           sessionContext += `Segment ${i + 1} [${m.role.toUpperCase()}]:\n${m.content}\n`;
+           if (m.summary) sessionContext += `Summary: ${m.summary}\n`;
+           if (m.inconsistencies && m.inconsistencies.length > 0) {
+             sessionContext += `Inconsistencies detected:\n${m.inconsistencies.map(inc => `  - ${inc}`).join('\n')}\n`;
+           }
+           if (m.sourceReferences && m.sourceReferences.length > 0) {
+              sessionContext += `Sources / Claims:\n`;
+              m.sourceReferences.forEach(s => {
+                sessionContext += `  - ${s.title}: ${s.claim || s.description || ''}\n`;
+              });
+           }
+           sessionContext += `\n`;
+        });
+      }
+
       updateSession({ liveAIState: { ...liveAIState, thinking: 'answering' } });
       const response = await fetch('/api/live-chat-stream', {
         method: 'POST',
@@ -232,9 +257,6 @@ export function LiveAIPanel({
     }
   };
 
-  const [inviteMode, setInviteMode] = useState<'passive'|'attentive'|'active'>('attentive');
-  const [inviteTts, setInviteTts] = useState(true);
-  const [showExternalInvite, setShowExternalInvite] = useState(false);
   const [availableProviders, setAvailableProviders] = useState<any[]>([]);
 
   useEffect(() => {
@@ -271,7 +293,17 @@ export function LiveAIPanel({
           externalParticipants: [...(liveAIState.externalParticipants || [])].map(p => 
             p.id === newParticipant.id ? { ...p, status: 'context_sync' } : p
           )
-        }
+        },
+        liveChat: [
+          ...(session.liveChat || []),
+          {
+            id: Date.now().toString(),
+            sessionId: session.id,
+            senderType: 'system',
+            content: `Synchronisiere Context Snapshot (Claims, Sources, Segments) mit ${providerName}...`,
+            createdAt: new Date().toISOString()
+          }
+        ]
       });
       
       setTimeout(() => {
@@ -285,24 +317,45 @@ export function LiveAIPanel({
           liveChat: [
             ...(session.liveChat || []),
             {
-              id: Date.now().toString(),
+              id: (Date.now() - 10).toString(),
               sessionId: session.id,
               senderType: 'system',
-              content: `${provider} wurde zur Session hinzugefügt.\nRolle: Unabhängiger Reviewer`,
+              content: `${providerName} wurde zur Session hinzugefügt und hat den Snapshot erhalten.\nRolle: Unabhängiger Reviewer`,
+              createdAt: new Date().toISOString()
+            },
+            {
+              id: Date.now().toString(),
+              sessionId: session.id,
+              senderType: 'external',
+              senderName: providerName,
+              content: `Hallo, ich bin ${providerName}. Ich habe den Context Snapshot erhalten und bin bereit, an der Diskussion teilzunehmen.`,
               createdAt: new Date().toISOString()
             }
           ]
         });
-      }, 1500);
+      }, 2000);
     }, 1000);
   };
 
   const handleRemoveExternal = (id: string) => {
+    const participant = liveAIState.externalParticipants?.find(p => p.id === id);
+    if (!participant) return;
+
     updateSession({
       liveAIState: {
         ...liveAIState,
         externalParticipants: (liveAIState.externalParticipants || []).filter(p => p.id !== id)
-      }
+      },
+      liveChat: [
+        ...(session.liveChat || []),
+        {
+          id: Date.now().toString(),
+          sessionId: session.id,
+          senderType: 'system',
+          content: `${participant.name} hat den Live Research Room verlassen.`,
+          createdAt: new Date().toISOString()
+        }
+      ]
     });
   };
 

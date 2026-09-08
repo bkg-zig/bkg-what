@@ -57,3 +57,9 @@
 ### TEXT AND MULTIMODAL (TTS) FIXES
 - **TTS Content Normalization**: Fixed an issue where the unified AI Gateway (`AIGenerateRequest`) was mistakenly passing array-based message `contents` directly into the text field of `parts`. This cascaded into a `Proto field is not repeating` exception on the backend when triggering the text-to-speech API.
 - **Unified Modality Handling**: Modified `GeminiAdapter` to natively accept and forward `responseModalities` and `speechConfig` fields, and reliably extract the returned `inlineData` (Audio). The `/api/tts` endpoint now seamlessly routes through the same abstraction layer as the script generation.
+
+### LIVE RESEARCH ROOM & CONTEXT SNAPSHOTS
+- **Context Snapshot**: Die Live-Session Serialisierung generiert nun eine vollständige Übersicht des bisherigen Verlaufs inklusive analysiertem Ursprungstext, erkannten *Claims*, zugeordneten *Sources* und strukturierten Diskussionssegmenten (`buildContextSnapshot` Mechanismus in `LiveAIPanel.tsx`). 
+- **Invite Workflow**: Über den globalen Header (Button `+ EXTERNE KI`) lässt sich die Seitenleiste direkt im Einladungs-Tab öffnen, um zusätzliche KI-Provider aufzuschalten.
+- **Join / Leave Status**: Das Betreten und Verlassen des "Live Research Room" durch Dritt-Agenten wird transparent als System-Message im Sessionverlauf protokolliert. Die bisherige Chat-Historie des abgemeldeten Agenten bleibt dabei vollständig erhalten.
+- **Participant UI**: BKG AI (Intern) und dazugeschaltete KI-Modelle (Extern) werden klar visuell in der Kopfzeile und den Chat-Bubbles voneinander getrennt (Farbcodierung und Labels).
