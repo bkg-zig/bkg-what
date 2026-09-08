@@ -1,0 +1,6 @@
+{
+  "name": "ExpertAI Discuss",
+  "description": "An app that automatically summarizes text and critically analyzes it for factual inconsistencies, presented as a voice conversation between AI experts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

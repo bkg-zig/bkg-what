@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #05070A;
+  --color-bg-secondary: #0A0F14;
+  --color-bg-panel: #0E151C;
+  --color-bg-panel-high: #121B23;
+  --color-border-tech: #20303B;
+  
+  --color-accent-cyan: #00E5FF;
+  --color-accent-violet: #7C4DFF;
+  
+  --color-status-success: #00FF9D;
+  --color-status-warning: #FFD166;
+  --color-status-error: #FF3B6B;
+  
+  --color-text-primary: #E8F1F5;
+  --color-text-secondary: #8FA3AD;
+  --color-text-muted: #53656E;
+
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+:root {
+  --bg-primary: #030508;
+  --bg-secondary: #070B10;
+  --bg-panel: #0A1118;
+  --bg-panel-high: #0F1722;
+  --bg-base: #030508;
+  --border: #1B2936;
+  
+  --accent-cyan: #00D2FF;
+  --accent-violet: #8F5BFF;
+  
+  --status-success: #00E676;
+  --status-warning: #FFAB00;
+  --status-error: #FF1744;
+  
+  --text-primary: #F0F4F8;
+  --text-secondary: #94A3B8;
+  --text-muted: #475569;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  position: relative;
+}
+
+/* Subtle Technical Grid Background - Enterprise Grade */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: 
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: center center;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* Add a subtle vignette for depth */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(circle at center, transparent 40%, var(--bg-primary) 100%);
+  pointer-events: none;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Source Target Effect - Cyberpunk Style */
+.segment-targeted-highlight {
+  position: relative;
+  border-color: var(--accent-violet) !important;
+  background-color: rgba(124, 77, 255, 0.1) !important;
+  box-shadow: 0 0 15px rgba(124, 77, 255, 0.2), inset 0 0 10px rgba(124, 77, 255, 0.1);
+  transition: all 0.3s ease-out;
+}
+.segment-targeted-highlight::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-violet);
+  box-shadow: 0 0 10px var(--accent-violet);
+}
+
+/* Audio Speaking Highlight */
+.segment-speaking-highlight {
+  position: relative;
+  background-color: rgba(0, 229, 255, 0.1) !important;
+  border-color: var(--accent-cyan) !important;
+  color: var(--text-primary) !important;
+}
+.segment-speaking-highlight::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-cyan);
+}
